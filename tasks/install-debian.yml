@@ -1,0 +1,58 @@
+---
+- name: ensure we have kernel-headers installed for the current kernel
+  block:
+  - name: attempt to install kernel support packages for current version
+    apt:
+      name:
+        - "linux-headers-{{ ansible_kernel }}"
+      state: present
+    environment: "{{proxy_env if proxy_env is defined else {}}}"
+  rescue:
+  - name: update the kernel to latest version so we have a supported version
+    apt:
+      name:
+        - "linux-image-amd64"
+        - "linux-headers-amd64"
+      state: latest
+    environment: "{{proxy_env if proxy_env is defined else {}}}"
+  - name: reboot to pick up the new kernel
+    reboot:
+    when: not nvidia_driver_skip_reboot
+
+- name: remove old signing key
+  apt_key:
+    id: "{{ old_nvidia_driver_debian_cuda_repo_gpgkey_id }}"
+    state: absent
+  environment: "{{proxy_env if proxy_env is defined else {}}}"
+  when: nvidia_driver_add_repos | bool
+
+- name: add CUDA keyring
+  apt:
+    deb: "{{ nvidia_driver_debian_cuda_keyring_url }}"
+    state: "present"
+  environment: "{{proxy_env if proxy_env is defined else {}}}"
+  when: nvidia_driver_add_repos | bool
+
+- name: force an apt update
+  apt:
+    update_cache: true
+  changed_when: false
+
+- name: ensure kmod is installed
+  apt:
+    name: "kmod"
+    state: "present"
+
+- name: blacklist nouveau
+  kernel_blacklist:
+    name: nouveau
+    state: present
+
+- name: install driver packages
+  apt:
+    name: "{{ nvidia_driver_package_version | ternary(nvidia_driver_debian_cuda_package+'='+nvidia_driver_package_version, nvidia_driver_debian_cuda_package) }}"
+    state: "{{ nvidia_driver_package_state }}"
+    autoremove: "{{ nvidia_driver_package_state == 'absent' }}"
+    purge: "{{ nvidia_driver_package_state == 'absent' }}"
+  register: install_driver
+  environment: "{{proxy_env if proxy_env is defined else {}}}"
