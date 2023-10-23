@@ -50,6 +50,21 @@
     src: nvidia.conf.j2
     dest: "{{ nvidia_driver_module_file }}"
     mode: '0644'
+  when: ansible_distribution != 'Debian'
+
+- name: set alternative manually because glx-alternatives is broken on Debian 11
+  ansible.builtin.file:
+    src: /etc/alternatives/nvidia--nvidia-modprobe.conf 
+    dest: /etc/modprobe.d/nvidia.conf
+    state: link
+    force: yes
+  when: ansible_distribution == 'Debian'
+
+- name: ensure that nvidia-uvm is loaded on Debian
+  ansible.builtin.lineinfile:
+    path: /etc/modules-load.d/nvidia.conf
+    line: "nvidia-uvm"
+  when: ansible_distribution == 'Debian'
 
 - name: reboot after driver install
   reboot:
